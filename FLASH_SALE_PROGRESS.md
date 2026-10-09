@@ -133,3 +133,17 @@ Do not introduce Redis, SQS, Docker, Kubernetes or AWS prematurely.
 - Test each feature before moving forward.
 - Commit and push at meaningful milestones.
 - Update this progress tracker at the end of each working session.
+
+## 10. Daily Learning Log
+
+### Day 1 — October 7, 2026
+- Set up the project environment and PostgreSQL integration.
+- Built the initial FastAPI application and product inventory API.
+
+### Day 2 — October 9, 2026
+- Implemented Redis-backed temporary reservations and PostgreSQL inventory deduction.
+- Added idempotency keys and concurrent order/reservation tests.
+- Verified that 10 simultaneous requests with the same idempotency key created only one order and deducted stock once.
+- Git commit: `1bda992` — `Add concurrent order and idempotency tests`
+- Pushed changes to GitHub; working tree clean.
+- **Next:** Transaction safety, rollback and failure handling.
