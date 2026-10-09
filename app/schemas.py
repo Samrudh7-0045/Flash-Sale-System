@@ -26,12 +26,6 @@ class ProductResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
-class OrderCreate(BaseModel):
-    product_id: int
-    quantity: int = Field(gt=0)
-
-
 class OrderResponse(BaseModel):
     id: int
     product_id: int
@@ -39,3 +33,21 @@ class OrderResponse(BaseModel):
     status: str
 
     model_config = {"from_attributes": True}
+
+
+class ReservationCreate(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0)
+
+
+class ReservationResponse(BaseModel):
+    product_id: int
+    quantity: int
+    reservation_token: str
+    expires_in_seconds: int = 60
+
+
+class OrderCreate(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0)
+    reservation_token: str
