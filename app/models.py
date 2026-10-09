@@ -7,6 +7,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -50,4 +51,7 @@ class Order(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
+    )
+    idempotency_key: Mapped[str] = mapped_column(
+    String(100), unique=True, nullable=False
     )

@@ -51,3 +51,4 @@ class OrderCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
     reservation_token: str
+    idempotency_key: str = Field(min_length=1, max_length=100)

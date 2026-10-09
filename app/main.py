@@ -50,14 +50,33 @@ def create_reservation(data: ReservationCreate):
     )
 
 
+
 @app.post("/orders", response_model=OrderResponse, status_code=201)
 def create_order(
     data: OrderCreate,
     db: Session = Depends(get_db),
 ):
+    existing_order = (
+        db.query(Order)
+        .filter(Order.idempotency_key == data.idempotency_key)
+        .first()
+    )
+
+    if existing_order:
+        if (
+            existing_order.product_id != data.product_id
+            or existing_order.quantity != data.quantity
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key already used for a different order",
+            )
+        return existing_order
+
     claimed = claim_reservation(
         data.product_id, data.quantity, data.reservation_token
     )
+
     if not claimed:
         raise HTTPException(
             status_code=409,
@@ -77,16 +96,20 @@ def create_order(
         if result.rowcount == 0:
             db.rollback()
             release_stock(data.product_id, data.reservation_token)
+
             product = db.get(Product, data.product_id)
             if product is None:
                 raise HTTPException(status_code=404, detail="Product not found")
+
             raise HTTPException(status_code=409, detail="Insufficient stock")
 
         order = Order(
             product_id=data.product_id,
             quantity=data.quantity,
             status="pending",
+            idempotency_key=data.idempotency_key,
         )
+
         db.add(order)
         db.commit()
         db.refresh(order)
