@@ -1,4 +1,3 @@
-
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +20,22 @@ from app.schemas import (
 )
 
 app = FastAPI(title="Flash-Sale Inventory System")
+
+
+def safe_release(product_id: int, token: str) -> None:
+    """Attempt Redis cleanup without hiding the original result."""
+    try:
+        release_stock(product_id, token)
+    except Exception as exc:
+        print("RESERVATION RELEASE ERROR:", repr(exc))
+
+
+def safe_unclaim(product_id: int, token: str) -> None:
+    """Restore a claim only when the database commit did not succeed."""
+    try:
+        unclaim_reservation(product_id, token)
+    except Exception as exc:
+        print("RESERVATION UNCLAIM ERROR:", repr(exc))
 
 
 @app.get("/")
@@ -63,7 +78,7 @@ def create_order(
     data: OrderCreate,
     db: Session = Depends(get_db),
 ):
-    # Fast path: return an existing order for a retry.
+    # 1. Fast path: return an existing order for an idempotent retry.
     existing_order = (
         db.query(Order)
         .filter(Order.idempotency_key == data.idempotency_key)
@@ -80,9 +95,11 @@ def create_order(
                 detail="Idempotency key already used for a different order",
             )
 
+        # The retry may have created a separate reservation.
+        safe_release(data.product_id, data.reservation_token)
         return existing_order
 
-    # Validate and claim the temporary reservation.
+    # 2. Claim the temporary Redis reservation.
     claimed = claim_reservation(
         data.product_id,
         data.quantity,
@@ -95,8 +112,11 @@ def create_order(
             detail="Invalid, expired, or already-used reservation",
         )
 
+    commit_started = False
+    commit_succeeded = False
+
     try:
-        # Final inventory safeguard in PostgreSQL.
+        # 3. PostgreSQL is the final inventory safeguard.
         result = db.execute(
             update(Product)
             .where(
@@ -108,7 +128,7 @@ def create_order(
 
         if result.rowcount == 0:
             db.rollback()
-            release_stock(data.product_id, data.reservation_token)
+            safe_release(data.product_id, data.reservation_token)
 
             product = db.get(Product, data.product_id)
 
@@ -123,6 +143,7 @@ def create_order(
                 detail="Insufficient stock",
             )
 
+        # 4. Create the order in the same PostgreSQL transaction.
         order = Order(
             product_id=data.product_id,
             quantity=data.quantity,
@@ -131,25 +152,25 @@ def create_order(
         )
 
         db.add(order)
+
+        commit_started = True
         db.commit()
+        commit_succeeded = True
+
+        # 5. Refresh the committed order.
         db.refresh(order)
 
-        release_stock(data.product_id, data.reservation_token)
-
-        return order
-
     except IntegrityError:
-        # Another concurrent request may have inserted the same key.
         db.rollback()
 
+        # A concurrent request may have inserted this idempotency key.
         existing_order = (
             db.query(Order)
             .filter(Order.idempotency_key == data.idempotency_key)
             .first()
         )
 
-        # Release this request's reservation, not the existing order's.
-        release_stock(data.product_id, data.reservation_token)
+        safe_release(data.product_id, data.reservation_token)
 
         if existing_order:
             if (
@@ -174,5 +195,21 @@ def create_order(
     except Exception as exc:
         print("ORDER ERROR:", repr(exc))
         db.rollback()
-        unclaim_reservation(data.product_id, data.reservation_token)
+
+        # Once commit has started, its outcome might be uncertain if
+        # the database connection fails. Do not blindly restore the
+        # Redis reservation in that situation.
+        if not commit_started:
+            safe_unclaim(data.product_id, data.reservation_token)
+
         raise
+
+    finally:
+        db.close()
+
+    # A successful commit must never be undone logically just because
+    # Redis cleanup fails. A retry can find the committed order.
+    if commit_succeeded:
+        safe_release(data.product_id, data.reservation_token)
+
+    return order

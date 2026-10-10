@@ -16,7 +16,7 @@ QUANTITY = 1
 IDEMPOTENCY_KEY = f"concurrency-test-{uuid4()}"
 
 
-def main():
+def test_concurrent_orders():
     db = SessionLocal()
     product_id = None
 
@@ -92,6 +92,9 @@ def main():
                 "Stock deducted once:",
                 final_product.stock == 19,
             )
+            assert all(status == 201 for status, _, _ in results)
+            assert final_product.stock == 19
+            assert len(orders) == 1
         finally:
             db.close()
 
@@ -127,7 +130,3 @@ def main():
                 cleanup_db.close()
         elif db is not None:
             db.close()
-
-
-if __name__ == "__main__":
-    main()
