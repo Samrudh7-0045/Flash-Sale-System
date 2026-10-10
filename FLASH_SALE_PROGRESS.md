@@ -147,3 +147,14 @@ Do not introduce Redis, SQS, Docker, Kubernetes or AWS prematurely.
 - Git commit: `1bda992` — `Add concurrent order and idempotency tests`
 - Pushed changes to GitHub; working tree clean.
 - **Next:** Transaction safety, rollback and failure handling.
+
+### Day 3 — October 10, 2026
+- Implemented Redis caching for `GET /products` with a 30-second TTL.
+- Added cache read, write, and invalidation helpers in `app/product_cache.py`.
+- Integrated cache invalidation after successful order commits.
+- Added cache-helper and API integration tests.
+- Verified Python syntax, `test_product_cache.py` (**1 passed**), and `git diff --check`.
+- API and full-suite tests remain blocked during collection because Windows Application Control blocks the Python `_ctypes` DLL in the current environments. No conclusion about API test correctness can be drawn yet.
+- Identified a potential race between cache population and invalidation; this remains unresolved.
+- Cache changes are **uncommitted**.
+- **Next:** Resolve the test-environment restriction and verify API behavior, then address cache invalidation races before committing.

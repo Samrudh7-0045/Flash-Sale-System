@@ -18,7 +18,11 @@ from app.schemas import (
     ReservationCreate,
     ReservationResponse,
 )
-
+from app.product_cache import (
+    cache_products,
+    get_cached_products,
+    invalidate_products_cache,
+)
 app = FastAPI(title="Flash-Sale Inventory System")
 
 
@@ -45,8 +49,25 @@ def root():
 
 @app.get("/products", response_model=list[ProductResponse])
 def get_products(db: Session = Depends(get_db)):
-    return db.query(Product).all()
+    cached_products = get_cached_products()
 
+    if cached_products is not None:
+        return cached_products
+
+    products = db.query(Product).all()
+
+    result = [
+        {
+            "id": product.id,
+            "name": product.name,
+            "price": str(product.price),
+            "stock": product.stock,
+        }
+        for product in products
+    ]
+
+    cache_products(result)
+    return result
 
 @app.post(
     "/reservations",
@@ -210,6 +231,7 @@ def create_order(
     # A successful commit must never be undone logically just because
     # Redis cleanup fails. A retry can find the committed order.
     if commit_succeeded:
+        invalidate_products_cache()
         safe_release(data.product_id, data.reservation_token)
 
     return order
